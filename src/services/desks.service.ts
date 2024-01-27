@@ -63,7 +63,7 @@ export async function createDesksService({
   }
 
   fs.appendFile(
-    "desks.csv",
+      process.env.PERSISTENCE_PATH,
     `\n${deskId},${zoneId},${zoneName}`,
     function (err) {
       if (err) throw err;
