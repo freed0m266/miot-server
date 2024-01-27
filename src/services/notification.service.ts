@@ -8,15 +8,17 @@ type DeskStatusChange = {
   newStatus: DeskStatus;
 };
 
-export async function notifyDeskChanges() {
+export async function notifyDeskChanges(): Promise<String> {
   const desksToNotify = await getChanges();
+  let resultString = "";
   if (desksToNotify.length > 0) {
     for (const desk of desksToNotify) {
-      console.log(
-        `Desk ${desk.deskId} in zone ${desk.zoneId} changed status to ${desk.newStatus}`,
-      ); // ToDo: notify with wh
+      const concatString = `Desk ${desk.deskId} in zone ${desk.zoneId} changed status to ${desk.newStatus}\n`;
+      resultString = resultString.concat(concatString);
+      console.log(concatString);
     }
   }
+  return resultString;
 }
 
 async function getChanges(): Promise<DeskStatusChange[]> {

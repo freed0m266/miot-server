@@ -21,7 +21,6 @@
     "dotenv": "^16.3.2",
     "express": "^4.18.2",
     "generate-api-key": "^1.0.2",
-    "node-cron": "^3.0.3",
     "prettier": "^3.1.1",
     "ts-node": "^10.9.2",
     "ws": "^8.16.0"

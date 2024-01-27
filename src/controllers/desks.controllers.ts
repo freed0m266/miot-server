@@ -17,6 +17,7 @@ type PostRequestParams = {
   zoneId: string;
   deskId: string;
   zoneName: string;
+  deskName: string;
 };
 
 type DeleteRequestParams = {

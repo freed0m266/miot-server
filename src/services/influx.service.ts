@@ -8,8 +8,9 @@ import { createDesksService, getDesksFromCsv } from "./desks.service";
 
 const bucket = process.env.INFLUXDB_BUCKET;
 
-const valueMin: number = 45;
-const valueMax: number = 400;
+const valueMin: number = 200;
+const valueMax: number = 850;
+const activeMinimum: number = 500;
 
 export async function saveDataPoint(
   timestamp: number,
@@ -23,12 +24,11 @@ export async function saveDataPoint(
       zoneId: "zone1",
       deskId: deskId,
       zoneName: "Conference Room",
+      deskName: "Real Desk",
     });
     desks = await getDesksFromCsv();
     real_desk = desks.find((i) => i.deskId === deskId);
   }
-
-  real_desk.deskId;
 
   // Write data of real desk (current) to influx
   writeToInflux({
@@ -55,41 +55,53 @@ export async function saveDataPoint(
   flushToInflux();
 }
 
-export async function getStats(
+export async function getAverage(
   zoneId: string,
-  deskId: string,
   count: number = 10,
   unit: "day" | "week" = "day",
 ): Promise<DataPoint[]> {
   let fluxQuery = `from(bucket: "${bucket}")
-      |> range(start: ${convertTimeRange(count, unit)})
-      |> filter(fn: (r) => r["_measurement"] == "current")
-      |> filter(fn: (r) => r["_field"] == "rms_avg")
-      |> filter(fn: (r) => r["zoneId"] == "${zoneId}")
-      |> filter(fn: (r) => r["deskId"] == "${deskId}")
-      |> aggregateWindow(every: ${getAggregateWindow(
-        count,
-        unit,
-      )}, fn: mean, createEmpty: false)
-      |> yield(name: "mean")`;
+  |> range(start: ${convertTimeRange(count, unit)})
+  |>filter(fn: (r) => r["zoneId"] == "${zoneId}")
+  |> filter(fn: (r) => 
+      r._measurement == "current" and 
+      r._field == "rms_avg")
+  |> mean()`;
 
   // console.log(fluxQuery);
 
   return queryInflux(fluxQuery);
 }
 
-export async function getLatestDataPoint(
+export async function getWorkdayAverage(
   zoneId: string,
-  deskId: string,
   count: number = 10,
   unit: "day" | "week" = "day",
 ): Promise<DataPoint[]> {
+  let fluxQuery = `
+  import "date"
+  from(bucket: "${bucket}")
+  |> range(start: ${convertTimeRange(count, unit)})
+  |>filter(fn: (r) => r["zoneId"] == "${zoneId}")
+  |> filter(fn: (r) => 
+      r._measurement == "current" and 
+      r._field == "rms_avg")
+  |> map(fn: (r) => ({ r with dayOfWeek: date.weekDay(t: r._time) }))
+  |> filter(fn: (r) => r.dayOfWeek >= 1 and r.dayOfWeek <= 5)
+  |> hourSelection(start: 9, stop: 17)
+  |> mean()`;
+
+  // console.log(fluxQuery);
+
+  return queryInflux(fluxQuery);
+}
+
+export async function getLatestDataPoint(zoneId: string): Promise<DataPoint[]> {
   let fluxQuery = `from(bucket: "${bucket}")
-      |> range(start: ${convertTimeRange(count, unit)})
+      |> range(start: -90d)
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
       |> filter(fn: (r) => r["zoneId"] == "${zoneId}")
-      |> filter(fn: (r) => r["deskId"] == "${deskId}")
       |> last()`;
 
   // console.log(fluxQuery);
@@ -99,17 +111,13 @@ export async function getLatestDataPoint(
 
 export async function getLatestActiveDataPoint(
   zoneId: string,
-  deskId: string,
-  count: number = 10,
-  unit: "day" | "week" = "day",
 ): Promise<DataPoint[]> {
   let fluxQuery = `from(bucket: "${bucket}")
-      |> range(start: ${convertTimeRange(count, unit)})
+      |> range(start: -90d)
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
       |> filter(fn: (r) => r["zoneId"] == "${zoneId}")
-      |> filter(fn: (r) => r["deskId"] == "${deskId}")
-      |> filter(fn: (r) => r["_value"] > 300)
+      |> filter(fn: (r) => r["_value"] > ${activeMinimum})
       |> last()`;
 
   // console.log(fluxQuery);
@@ -122,14 +130,47 @@ export async function getLatestTwoDataPoints(
   deskId: string,
 ): Promise<DataPoint[]> {
   let fluxQuery = `from(bucket: "${bucket}")
-      |> range(start: -5m)
+      |> range(start: -44m)
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
       |> filter(fn: (r) => r["zoneId"] == "${zoneId}")
       |> filter(fn: (r) => r["deskId"] == "${deskId}")
-      |> aggregateWindow(every: 3m, fn: last)`;
+      |> aggregateWindow(every: 23m, fn: last)`;
 
   // console.log(fluxQuery);
+
+  return queryInflux(fluxQuery);
+}
+
+export async function getShortUsageCount(
+  zoneId: string,
+  count: number,
+  unit: "day" | "week" = "day",
+): Promise<DataPoint[]> {
+  let fluxQuery = `baseData = from(bucket: "${bucket}")
+  |> range(start: ${convertTimeRange(count, unit)})
+  |> filter(fn: (r) => 
+      r._measurement == "current" and 
+      r._field == "rms_avg")
+  
+nextData = baseData |> duplicate(column: "_time", as: "next_time") |> timeShift(duration: -5m, columns: ["_time"]) 
+prevData = baseData |> duplicate(column: "_time", as: "prev_time") |> timeShift(duration: 5m, columns: ["_time"])
+
+join1 = join(tables: {nowRun: baseData, prevRun: prevData}, on: ["_time", "deskId", "_measurement", "_field", "zoneId"], method: "inner")
+join2 = join(tables: {nowRun: join1, nextRun: nextData}, on: ["_time", "deskId", "_measurement", "_field", "zoneId"], method: "inner")
+
+join2
+  |> map(fn: (r) => ({
+      _time: r._time,
+      deskId: r.deskId,
+      zoneId: r.zoneId,
+      patternMatch: r._value_prevRun < ${activeMinimum} and r._value_nowRun > ${activeMinimum} and r._value < ${activeMinimum}
+    }))
+  |> filter(fn: (r) => r.patternMatch)
+  |> group(columns: ["deskId", "zoneId"])
+  |> filter(fn: (r) => r["zoneId"] == "${zoneId}")
+  |> duplicate(column: "patternMatch", as: "_value")
+  |> count()`;
 
   return queryInflux(fluxQuery);
 }
