@@ -21,6 +21,9 @@ export type HardwarioMeasurement = {
 export const pushData: RequestHandler = async (req, res, next) => {
   const request = req.body as unknown as HardwarioPayload;
 
+  console.log("Callback received");
+  console.log(request);
+
   const reqApiKey = req.header("api-key") || req.header("Api-Key");
   if (reqApiKey !== process.env.HARDWARIO_TOKEN) {
     res.status(401).json({ message: "Unauthorized" });

@@ -63,7 +63,7 @@ export async function createDesksService({
   }
 
   fs.appendFile(
-    "../server/src/persistence/desks.csv",
+      process.env.PERSISTENCE_PATH,
     `\n${deskId},${zoneId},${zoneName}`,
     function (err) {
       if (err) throw err;
@@ -77,7 +77,7 @@ export async function deleteDesksService({ zoneId, deskId }): Promise<number> {
   console.log("Deleting desk");
 
   let response = null;
-  const csvFilePath = path.resolve("../server/src/persistence/desks.csv");
+  const csvFilePath = path.resolve(process.env.PERSISTENCE_PATH);
   const headers = ["deskId", "zoneId", "zoneName"];
 
   const rows: ManageDeskServiceParams[] = [];
@@ -125,7 +125,7 @@ export async function deleteDesksService({ zoneId, deskId }): Promise<number> {
 }
 
 export async function getDesksFromCsv(): Promise<ManageDeskServiceParams[]> {
-  const csvFilePath = path.resolve("../server/src/persistence/desks.csv");
+  const csvFilePath = path.resolve(process.env.PERSISTENCE_PATH);
   const headers = ["deskId", "zoneId", "zoneName"];
 
   const desks: ManageDeskServiceParams[] = [];
@@ -210,7 +210,7 @@ async function doesDeskAlreadyExist(
   zoneId: string,
   deskId: string,
 ): Promise<boolean> {
-  const csvFilePath = path.resolve("../server/src/persistence/desks.csv");
+  const csvFilePath = path.resolve(process.env.PERSISTENCE_PATH);
   const headers = ["deskId", "zoneId", "zoneName"];
 
   return new Promise<boolean>((resolve, reject) => {
