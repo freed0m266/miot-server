@@ -2,7 +2,6 @@ import express, { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 import "dotenv/config";
 import { Server } from "ws";
-import cron from "node-cron";
 import cors from "cors";
 
 import deskRoutes from "./routes/desks.route";
@@ -49,16 +48,15 @@ wss.on("connection", (ws) => {
     console.log("Received message:", message);
   });
 
-  setInterval(() => {
-    ws.send("Mockovaná zpráva z WebSocket serveru");
-  }, 3000);
+  const interval = setInterval(async () => {
+    if (ws.readyState === ws.OPEN) {
+      const notificationMessage = await notifyDeskChanges();
+      ws.send(notificationMessage);
+    }
+  }, 6000);
 
   ws.on("close", () => {
     console.log("WebSocket client disconnected");
+    clearInterval(interval);
   });
-});
-
-// cron.schedule every 5 minutes
-cron.schedule("*/5 * * * *", () => {
-  notifyDeskChanges();
 });

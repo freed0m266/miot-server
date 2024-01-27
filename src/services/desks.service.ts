@@ -6,7 +6,9 @@ import { DataPoint } from "../client/influx.client";
 import {
   getLatestActiveDataPoint,
   getLatestDataPoint,
-  getStats,
+  getShortUsageCount,
+  getAverage,
+  getWorkdayAverage,
 } from "./influx.service";
 
 type GetDesksServiceParams = {
@@ -20,6 +22,7 @@ export type ManageDeskServiceParams = {
   zoneId: string;
   deskId: string;
   zoneName: string;
+  deskName: string;
 };
 
 export async function getDesksService({
@@ -30,21 +33,58 @@ export async function getDesksService({
 }: GetDesksServiceParams): Promise<DeskDto[]> {
   const desksResult: DeskDto[] = [];
 
+  const averageDataPoints: DataPoint[] = await getAverage(zoneId, count, unit);
+  const workdayAverageDataPoints: DataPoint[] = await getWorkdayAverage(
+    zoneId,
+    count,
+    unit,
+  );
+  const shortTermUsageDataPoints: DataPoint[] = await getShortUsageCount(
+    zoneId,
+    count,
+    unit,
+  );
+  const latestDataPoints: DataPoint[] = await getLatestDataPoint(zoneId);
+  const latestActiveDataPoints: DataPoint[] =
+    await getLatestActiveDataPoint(zoneId);
+
   if (Array.isArray(deskIds) && deskIds.length > 0) {
     for (const deskId of deskIds) {
       const exists = await doesDeskAlreadyExist(zoneId, deskId);
       if (!exists) {
         continue;
       }
-      desksResult.push(await getDeskData(deskId, zoneId, count, unit));
+      const deskObject = await getDeskFromCsv(deskId, zoneId);
+      desksResult.push(
+        await mapToDeskDto(
+          deskId,
+          deskObject.deskName,
+          zoneId,
+          getDataPointForDesk(deskId, averageDataPoints),
+          getDataPointForDesk(deskId, workdayAverageDataPoints),
+          getDataPointForDesk(deskId, shortTermUsageDataPoints),
+          getDataPointForDesk(deskId, latestDataPoints),
+          getDataPointForDesk(deskId, latestActiveDataPoints),
+        ),
+      );
     }
     return desksResult;
   } else {
     const allDesks = await getDesksFromCsv();
     const allZoneDesks = allDesks.filter((i) => i.zoneId === zoneId);
-    const zoneDeskIds = allZoneDesks.map((i) => i.deskId);
-    for (const deskId of zoneDeskIds) {
-      desksResult.push(await getDeskData(deskId, zoneId, count, unit));
+    for (const desk of allZoneDesks) {
+      desksResult.push(
+        await mapToDeskDto(
+          desk.deskId,
+          desk.deskName,
+          zoneId,
+          getDataPointForDesk(desk.deskId, averageDataPoints),
+          getDataPointForDesk(desk.deskId, workdayAverageDataPoints),
+          getDataPointForDesk(desk.deskId, shortTermUsageDataPoints),
+          getDataPointForDesk(desk.deskId, latestDataPoints),
+          getDataPointForDesk(desk.deskId, latestActiveDataPoints),
+        ),
+      );
     }
     return desksResult;
   }
@@ -54,6 +94,7 @@ export async function createDesksService({
   zoneId,
   deskId,
   zoneName,
+  deskName,
 }): Promise<number> {
   console.log("Creating desk");
 
@@ -63,8 +104,8 @@ export async function createDesksService({
   }
 
   fs.appendFile(
-      process.env.PERSISTENCE_PATH,
-    `\n${deskId},${zoneId},${zoneName}`,
+    process.env.PERSISTENCE_PATH,
+    `\n${deskId},${deskName},${zoneId},${zoneName}`,
     function (err) {
       if (err) throw err;
     },
@@ -78,7 +119,7 @@ export async function deleteDesksService({ zoneId, deskId }): Promise<number> {
 
   let response = null;
   const csvFilePath = path.resolve(process.env.PERSISTENCE_PATH);
-  const headers = ["deskId", "zoneId", "zoneName"];
+  const headers = ["deskId", "deskName", "zoneId", "zoneName"];
 
   const rows: ManageDeskServiceParams[] = [];
 
@@ -124,9 +165,18 @@ export async function deleteDesksService({ zoneId, deskId }): Promise<number> {
   return response;
 }
 
+async function getDeskFromCsv(
+  deskId: string,
+  zoneId: string,
+): Promise<ManageDeskServiceParams> {
+  const allDesks = await getDesksFromCsv();
+  const allZoneDesks = allDesks.filter((i) => i.zoneId === zoneId);
+  return allZoneDesks.find((i) => i.deskId === deskId);
+}
+
 export async function getDesksFromCsv(): Promise<ManageDeskServiceParams[]> {
   const csvFilePath = path.resolve(process.env.PERSISTENCE_PATH);
-  const headers = ["deskId", "zoneId", "zoneName"];
+  const headers = ["deskId", "deskName", "zoneId", "zoneName"];
 
   const desks: ManageDeskServiceParams[] = [];
 
@@ -156,62 +206,12 @@ export async function getDesksFromCsv(): Promise<ManageDeskServiceParams[]> {
   return desks;
 }
 
-async function getDeskData(deskId, zoneId, count, unit): Promise<DeskDto> {
-  const statsPromises = [];
-  const latestDataPromises = [];
-  const latestActiveDataPromises = [];
-
-  statsPromises.push(getStats(zoneId, deskId, count, unit));
-  latestDataPromises.push(getLatestDataPoint(zoneId, deskId, count, unit));
-  latestActiveDataPromises.push(
-    getLatestActiveDataPoint(zoneId, deskId, count, unit),
-  );
-
-  const stats: DataPoint[][] = await Promise.all(statsPromises);
-  const latestDataPoint: DataPoint[][] = await Promise.all(latestDataPromises);
-  const latestActiveDataPoint: DataPoint[][] = await Promise.all(
-    latestActiveDataPromises,
-  );
-
-  // If some data are not available, return an offline desk with null stats
-  if (
-    stats === undefined ||
-    stats.length == 0 ||
-    stats[0] === undefined ||
-    stats[0].length == 0 ||
-    latestDataPoint === undefined ||
-    latestDataPoint.length == 0 ||
-    latestDataPoint[0] === undefined ||
-    latestDataPoint[0].length == 0 ||
-    latestActiveDataPoint === undefined ||
-    latestActiveDataPoint.length == 0 ||
-    latestActiveDataPoint[0] === undefined ||
-    latestActiveDataPoint[0].length == 0
-  ) {
-    return {
-      id: deskId,
-      zoneId: zoneId,
-      status: "offline",
-      lastUsed: null,
-      averageWorkHoursUsage: null,
-      averageDailyUsage: null,
-      shortUsagesCount: null,
-    };
-  } else {
-    return mapToDeskDto(
-      stats[0][0],
-      latestDataPoint[0][0],
-      latestActiveDataPoint[0][0],
-    );
-  }
-}
-
 async function doesDeskAlreadyExist(
   zoneId: string,
   deskId: string,
 ): Promise<boolean> {
   const csvFilePath = path.resolve(process.env.PERSISTENCE_PATH);
-  const headers = ["deskId", "zoneId", "zoneName"];
+  const headers = ["deskId", "deskName", "zoneId", "zoneName"];
 
   return new Promise<boolean>((resolve, reject) => {
     const stream = fs.createReadStream(csvFilePath);
@@ -245,33 +245,47 @@ async function doesDeskAlreadyExist(
 }
 
 function mapToDeskDto(
-  stats: DataPoint,
+  deskId: string,
+  deskName: string,
+  zoneId: string,
+  averageDataPoint: DataPoint,
+  workdayAverageDataPoint: DataPoint,
+  shortTermUsageDataPoint: DataPoint,
   latestDataPoint: DataPoint,
   latestActiveDataPoint: DataPoint,
 ): DeskDto {
   return {
-    id: stats.deskId,
-    zoneId: stats.zoneId,
+    id: deskId,
+    name: deskName,
+    zoneId: zoneId,
     status: getDeskStatus(latestDataPoint),
-    lastUsed: latestActiveDataPoint.timestamp as Date,
-    averageWorkHoursUsage: stats.value, // ToDo
-    averageDailyUsage: stats.value, // ToDo
-    shortUsagesCount: 2, // ToDo
+    lastUsed: latestActiveDataPoint
+      ? (latestActiveDataPoint.timestamp as Date)
+      : null,
+    averageWorkHoursUsage: workdayAverageDataPoint
+      ? workdayAverageDataPoint.value
+      : null,
+    averageDailyUsage: averageDataPoint ? averageDataPoint.value : null,
+    shortUsagesCount: shortTermUsageDataPoint
+      ? shortTermUsageDataPoint.value
+      : 0,
   };
 }
 
-// If the desk has active usage (more than 300 rms_avg) and last data point is less than 5 minutes old
+// If the desk has active usage (more than 500 rms_avg) and last data point is less than 16 minutes old
 export function getDeskStatus(dataPoint: DataPoint): DeskStatus {
+  if (!dataPoint) {
+    return "offline";
+  }
+
   const difInSecs =
     Math.abs(new Date(dataPoint.timestamp).valueOf() - Date.now().valueOf()) /
     1000;
 
-  // Has the desk reported in last 3 minutes
-  if (difInSecs < 60 * 3) {
-    // ToDo: does 5 minutes make sense?
-    // Has the desk rms_avg over 300
-    if (dataPoint.value > 300) {
-      // ToDo: set accurate limit
+  // Has the desk reported in last 31 minutes
+  if (difInSecs < 60 * 31) {
+    // Has the desk rms_avg over 500
+    if (dataPoint.value >= 500) {
       return "active";
     } else {
       return "inactive";
@@ -279,4 +293,14 @@ export function getDeskStatus(dataPoint: DataPoint): DeskStatus {
   } else {
     return "offline";
   }
+}
+
+function getDataPointForDesk(
+  deskId: string,
+  dataPoints: DataPoint[],
+): DataPoint | undefined {
+  if (!dataPoints) {
+    return undefined;
+  }
+  return dataPoints.find((dataPoint) => dataPoint.deskId === deskId);
 }
