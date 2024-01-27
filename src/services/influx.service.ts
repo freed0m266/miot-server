@@ -6,6 +6,8 @@ import {
 } from "../client/influx.client";
 import { createDesksService, getDesksFromCsv } from "./desks.service";
 
+const bucket = process.env.INFLUXDB_BUCKET;
+
 const valueMin: number = 45;
 const valueMax: number = 400;
 
@@ -20,8 +22,8 @@ export async function saveDataPoint(
     await createDesksService({
       zoneId: "zone1",
       deskId: deskId,
-      zoneName: "zone-1",
-    }); // ToDo: set default values
+      zoneName: "Conference Room",
+    });
     desks = await getDesksFromCsv();
     real_desk = desks.find((i) => i.deskId === deskId);
   }
@@ -59,7 +61,7 @@ export async function getStats(
   count: number = 10,
   unit: "day" | "week" = "day",
 ): Promise<DataPoint[]> {
-  let fluxQuery = `from(bucket: "current")
+  let fluxQuery = `from(bucket: "${bucket}")
       |> range(start: ${convertTimeRange(count, unit)})
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
@@ -82,7 +84,7 @@ export async function getLatestDataPoint(
   count: number = 10,
   unit: "day" | "week" = "day",
 ): Promise<DataPoint[]> {
-  let fluxQuery = `from(bucket: "current")
+  let fluxQuery = `from(bucket: "${bucket}")
       |> range(start: ${convertTimeRange(count, unit)})
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
@@ -101,7 +103,7 @@ export async function getLatestActiveDataPoint(
   count: number = 10,
   unit: "day" | "week" = "day",
 ): Promise<DataPoint[]> {
-  let fluxQuery = `from(bucket: "current")
+  let fluxQuery = `from(bucket: "${bucket}")
       |> range(start: ${convertTimeRange(count, unit)})
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
@@ -119,7 +121,7 @@ export async function getLatestTwoDataPoints(
   zoneId: string,
   deskId: string,
 ): Promise<DataPoint[]> {
-  let fluxQuery = `from(bucket: "current")
+  let fluxQuery = `from(bucket: "${bucket}")
       |> range(start: -5m)
       |> filter(fn: (r) => r["_measurement"] == "current")
       |> filter(fn: (r) => r["_field"] == "rms_avg")
