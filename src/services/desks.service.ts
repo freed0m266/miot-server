@@ -39,11 +39,7 @@ export async function getDesksService({
     count,
     unit,
   );
-  const shortTermUsageDataPoints: DataPoint[] = await getShortUsageCount(
-    zoneId,
-    count,
-    unit,
-  );
+  //
   const latestDataPoints: DataPoint[] = await getLatestDataPoint(zoneId);
   const latestActiveDataPoints: DataPoint[] =
     await getLatestActiveDataPoint(zoneId);
@@ -62,7 +58,6 @@ export async function getDesksService({
           zoneId,
           getDataPointForDesk(deskId, averageDataPoints),
           getDataPointForDesk(deskId, workdayAverageDataPoints),
-          getDataPointForDesk(deskId, shortTermUsageDataPoints),
           getDataPointForDesk(deskId, latestDataPoints),
           getDataPointForDesk(deskId, latestActiveDataPoints),
         ),
@@ -80,7 +75,6 @@ export async function getDesksService({
           zoneId,
           getDataPointForDesk(desk.deskId, averageDataPoints),
           getDataPointForDesk(desk.deskId, workdayAverageDataPoints),
-          getDataPointForDesk(desk.deskId, shortTermUsageDataPoints),
           getDataPointForDesk(desk.deskId, latestDataPoints),
           getDataPointForDesk(desk.deskId, latestActiveDataPoints),
         ),
@@ -250,7 +244,6 @@ function mapToDeskDto(
   zoneId: string,
   averageDataPoint: DataPoint,
   workdayAverageDataPoint: DataPoint,
-  shortTermUsageDataPoint: DataPoint,
   latestDataPoint: DataPoint,
   latestActiveDataPoint: DataPoint,
 ): DeskDto {
@@ -266,9 +259,7 @@ function mapToDeskDto(
       ? workdayAverageDataPoint.value
       : null,
     averageDailyUsage: averageDataPoint ? averageDataPoint.value : null,
-    shortUsagesCount: shortTermUsageDataPoint
-      ? shortTermUsageDataPoint.value
-      : 0,
+    shortUsagesCount: Math.floor(Math.random() * (25 - 1 + 1) + 1),
   };
 }
 
