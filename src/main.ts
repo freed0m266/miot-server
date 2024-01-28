@@ -17,7 +17,9 @@ dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
-export const apiKey = generateApiKey({
+
+export const apiKey = process.env.API_KEY;
+export const generatedApiKey = generateApiKey({
   method: "uuidv4",
   prefix: process.env.BUILDING_ID || undefined,
 });
@@ -37,6 +39,7 @@ app.use("/data", dataRoute);
 const server = app.listen(port, async () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);
   console.log(apiKey);
+  console.log(generatedApiKey);
 });
 
 const wss = new Server({ server });

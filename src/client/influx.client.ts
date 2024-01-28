@@ -12,7 +12,7 @@ const url = process.env.INFLUXDB_URL;
 const org = process.env.INFLUXDB_ORG;
 const bucket = process.env.INFLUXDB_BUCKET;
 
-const client = new InfluxDB({ url, token });
+const client = new InfluxDB({ url, token, timeout: 30000 });
 
 let queryClient = client.getQueryApi(org);
 let writeClient = client.getWriteApi(org, bucket, "s");
